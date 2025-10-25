@@ -1,213 +1,166 @@
 import { useSocket } from '@/src/contexts/SocketContext';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
-import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Text, TouchableOpacity, View } from 'react-native';
-import { Shipment } from '../interfaces';
+import { ActivityIndicator, Text, View } from 'react-native';
+import { CollectingBatchView } from '../components/tasks/CollectingBatchView';
+import { DeliveringBatchView } from '../components/tasks/DeliveringBatchView';
+import { RoutingToHubView } from '../components/tasks/RoutingToHubView';
+import { DirectRouteView } from '../components/tasks/DirectRouteView';
+import { useDriverTask } from '../context/DriverTaskContext';
+import { DriverTask, Batch } from '@/interfaces'; // Import Batch
+import { LinearGradient } from 'expo-linear-gradient';
 
-interface PickupAssignment {
-    orderId: string;
-    sellerId: string;
-    sellerLocation: { lat: number; lng: number };
-    items: any[];
-}
+
+// --- MOCK DATA ---
+// Creamos una tarea de prueba para forzar la vista de recolección
+const mockBatch: Batch = {
+    _id: 'batch_123',
+    type: 'HUB_AND_SPOKE',
+    status: 'assigned',
+    assignedCollectorId: 'driver_456',
+    createdAt: new Date(),
+    shipments: [
+        {
+            _id: 'shipment_abc',
+            orderId: 'order_001',
+            sellerId: 'seller_789',
+            buyerId: 'buyer_101',
+            shippingType: 'going_network',
+            status: 'in_transit',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            pickupAddress: {
+                name: 'Tienda de Ropa "La Moda"',
+                street: 'Av. Corrientes 1234',
+                city: 'Buenos Aires',
+                state: 'CABA',
+                zipCode: 'C1043AAS',
+                country: 'Argentina',
+                phone: '11-5555-1234',
+                email: 'ventas@lamoda.com',
+                lat: -34.6037,
+                lon: -58.3816,
+            },
+            deliveryAddress: {
+                name: 'Juan Pérez',
+                street: 'Calle Falsa 567',
+                city: 'Buenos Aires',
+                state: 'CABA',
+                zipCode: 'C1425BJH',
+                country: 'Argentina',
+                phone: '11-5555-5678',
+                email: 'juan.perez@email.com',
+                lat: -34.58,
+                lon: -58.42,
+            },
+            items: [{ _id: 'prod_xyz', name: 'Camisa Azul', price: 50, quantity: 1, mainImage: '', seller: '', addressWallet: '', currency: 'USD', shippingType: 'going_network', pickupAddress: {} as any }],
+        },
+        {
+            _id: 'shipment_def',
+            orderId: 'order_002',
+            sellerId: 'seller_007',
+            buyerId: 'buyer_102',
+            shippingType: 'going_network',
+            status: 'in_transit',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            pickupAddress: {
+                name: 'Librería "El Saber"',
+                street: 'Av. Santa Fe 2345',
+                city: 'Buenos Aires',
+                state: 'CABA',
+                zipCode: 'C1123AAS',
+                country: 'Argentina',
+                phone: '11-5555-4321',
+                email: 'contacto@elsaber.com',
+                lat: -34.595,
+                lon: -58.39,
+            },
+            deliveryAddress: {
+                name: 'Ana Gómez',
+                street: 'Av. del Libertador 4567',
+                city: 'Buenos Aires',
+                state: 'CABA',
+                zipCode: 'C1426BJH',
+                country: 'Argentina',
+                phone: '11-5555-8765',
+                email: 'ana.gomez@email.com',
+                lat: -34.57,
+                lon: -58.43,
+            },
+            items: [{ _id: 'prod_uvw', name: 'Libro de Ciencia Ficción', price: 30, quantity: 1, mainImage: '', seller: '', addressWallet: '', currency: 'USD', shippingType: 'going_network', pickupAddress: {} as any }],
+        }
+    ]
+};
+
+const mockTask: DriverTask = {
+    status: 'COLLECTING_BATCH',
+    batch: mockBatch,
+};
+// --- END MOCK DATA ---
+
+
+import Header from '../components/ui/Header';
+
+// --- Main Dashboard Component (Development Mode) ---
 
 const DashboardScreen = () => {
-    const [shipments, setShipments] = useState<Shipment[]>([]);
-    const [pickupAssignments, setPickupAssignments] = useState<PickupAssignment[]>([]);
-    const [loadingPickups, setLoadingPickups] = useState(true);
-    const [driverLocation, setDriverLocation] = useState<{ lat: number; lng: number } | null>(null);
-    const router = useRouter();
-    const socket = useSocket();
+    // Forzamos el estado para desarrollo y diseño
+    const { activeTask, setActiveTask } = useDriverTask();
+    const [isOnline, setIsOnline] = useState(true); // FORZADO A TRUE
 
-    const fetchShipments = async () => {
-        try {
-            const driverId = 'someDriverIdHere';
-            const response = await fetch(`https://going-git-delivery-sergioariels-projects.vercel.app/api/shipments?driverId=${driverId}`);
-            const data = await response.json();
-            setShipments(data);
-        } catch (error) {
-            console.error('Error fetching shipments:', error);
-        }
-    };
-
+    // Seteamos la tarea de prueba en el contexto al iniciar
     useEffect(() => {
-        let locationWatcher: Location.LocationSubscription | null = null;
-
-        const startLocationTracking = async () => {
-            let { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== 'granted') {
-                console.error('Permiso para acceder a la ubicación denegado');
-                setLoadingPickups(false);
-                return;
-            }
-
-            locationWatcher = await Location.watchPositionAsync(
-                {
-                    accuracy: Location.Accuracy.High,
-                    timeInterval: 10000,
-                    distanceInterval: 10,
-                },
-                (location) => {
-                    if (socket && location.coords.latitude && location.coords.longitude) {
-                        const currentDriverLocation = {
-                            lat: location.coords.latitude,
-                            lng: location.coords.longitude,
-                        };
-                        setDriverLocation(currentDriverLocation);
-
-                        socket.emit('get_orders', currentDriverLocation);
-                    }
-                }
-            );
-        };
-
-        if (socket) {
-            startLocationTracking();
-        } else {
-            setLoadingPickups(false);
-        }
-
-        return () => {
-            if (locationWatcher) {
-                locationWatcher.remove();
-            }
-        };
-    }, [socket]);
-
-    const refreshAvailablePickups = async () => {
-        if (socket && driverLocation) {
-            setLoadingPickups(true);
-            socket.emit('get_orders', driverLocation);
-        } else {
-            setLoadingPickups(false);
-        }
-    };
-
-    useEffect(() => {
-        fetchShipments();
+        setActiveTask(mockTask);
     }, []);
 
-    useEffect(() => {
-        if (socket) {
-            socket.emit('join_drivers_room');
 
-            socket.on('new_order_available_for_seller', (assignment: PickupAssignment) => {
-                setPickupAssignments((prevAssignments) => {
-                    if (prevAssignments.find(a => a.orderId === assignment.orderId && a.sellerId === assignment.sellerId)) {
-                        return prevAssignments;
-                    }
-                    return [assignment, ...prevAssignments];
-                });
-            });
+    // La lógica de conexión y sockets queda desactivada temporalmente
+    // const [loading, setLoading] = useState(false);
+    // const [error, setError] = useState<string | null>(null);
+    // const socket = useSocket();
+    // const { getAccessToken } = usePrivy();
+    // const goOnline = async () => { ... };
+    // useEffect(() => { ... });
 
-            socket.on('send_orders', (assignments: PickupAssignment[]) => {
-                setPickupAssignments((prevAssignments) => {
-                    const newAssignmentsMap = new Map(assignments.map(a => [`${a.orderId}-${a.sellerId}`, a]));
-                    const combined = [...prevAssignments];
-                    for (const [key, value] of newAssignmentsMap.entries()) {
-                        if (!combined.some(p => `${p.orderId}-${p.sellerId}` === key)) {
-                            combined.push(value);
-                        }
-                    }
-                    return combined;
-                });
-                setLoadingPickups(false);
-            });
-
-            socket.on('order_unavailable', (data: { orderId: string }) => {
-                setPickupAssignments((prevAssignments) => prevAssignments.filter(assignment => assignment.orderId !== data.orderId));
-            });
-
-            return () => {
-                socket.off('new_order_available_for_seller');
-                socket.off('send_orders');
-                socket.off('order_unavailable');
-            };
+    const renderContent = () => {
+        if (!activeTask) {
+             return (
+                <View className="flex-1 justify-center items-center p-4">
+                    <ActivityIndicator size="large" color="#fff" />
+                    <ThemedText className="mt-2">Loading Task...</ThemedText>
+                </View>
+             );
         }
-    }, [socket]);
 
-    const renderShipmentItem = ({ item }: { item: Shipment }) => (
-        <View className="bg-white p-5 my-2 rounded-lg border border-border shadow-md">
-            <Text className="text-lg font-bold text-primary-dark">Envío #{item._id.toString().substring(0, 6)}</Text>
-            <Text className="text-base my-2.5 text-primary">Estado: {item.status}</Text>
-            <TouchableOpacity onPress={() => router.push(`/delivery/${item._id}`)}>
-                <LinearGradient
-                    colors={['#14BFFB', '#D300E5']}
-                    className="py-2.5 px-5 rounded-lg items-center mt-2.5"
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                >
-                    <Text className="text-white text-base font-bold">Ver Detalles</Text>
-                </LinearGradient>
-            </TouchableOpacity>
-        </View>
-    );
-
-    const renderPickupAssignmentItem = ({ item }: { item: PickupAssignment }) => (
-        <View className="bg-white p-5 my-2 rounded-lg border-2 border-primary shadow-lg">
-            <Text className="text-lg font-bold mb-1.5 text-primary-dark">Nueva Recogida:</Text>
-            <Text className="text-base mb-1 text-primary-dark">Orden ID: {item.orderId.substring(0, 6)}...</Text>
-            <Text className="text-base mb-1 text-primary-dark">Vendedor ID: {item.sellerId.substring(0, 6)}...</Text>
-            <Text className="text-base mb-1 text-primary-dark">Ítems: {item.items.length}</Text>
-            <TouchableOpacity
-                className="mt-4"
-                onPress={() => {
-                    setPickupAssignments(prev => prev.filter(p => p.orderId !== item.orderId || p.sellerId !== item.sellerId));
-                    router.push({
-                        pathname: `/pickup-details/[orderId]/[sellerId]`,
-                        params: {
-                            orderId: item.orderId,
-                            sellerId: item.sellerId
-                        }
-                    });
-                }}
-            >
-                <LinearGradient
-                    colors={['#D300E5', '#14BFFB']}
-                    className="py-2.5 px-5 rounded-lg items-center"
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                >
-                    <Text className="text-white text-base font-bold">Aceptar Recogida</Text>
-                </LinearGradient>
-            </TouchableOpacity>
-        </View>
-    );
+        switch (activeTask.status) {
+            case 'COLLECTING_BATCH':
+                return <CollectingBatchView />;
+            case 'ROUTING_TO_HUB':
+                return <RoutingToHubView />;
+            case 'DELIVERING_BATCH':
+                return <DeliveringBatchView />;
+            case 'PERFORMING_DIRECT_ROUTE':
+                return <DirectRouteView />;
+            default:
+                 return (
+                    <View className="flex-1 justify-center items-center p-6">
+                        <ThemedText>Unknown Task Status</ThemedText>
+                    </View>
+                 );
+        }
+    };
 
     return (
-        <View className="flex-1 p-2.5 bg-accent">
-            <TouchableOpacity className="m-2.5 self-end p-2 rounded-md bg-primary" onPress={refreshAvailablePickups}>
-                <Text className="text-base text-white font-bold">Actualizar Recogidas</Text>
-            </TouchableOpacity>
-
-            <Text className="text-xl font-bold mt-2.5 mb-2.5 px-2.5 text-primary-dark">Nuevas Recogidas Pendientes</Text>
-            {loadingPickups ? (
-                <ActivityIndicator size="large" color="#14BFFB" className="my-5" />
-            ) : pickupAssignments.length === 0 ? (
-                <Text className="text-center mt-5 text-base text-primary-dark">No hay nuevas recogidas disponibles.</Text>
-            ) : (
-                <FlatList
-                    data={pickupAssignments}
-                    keyExtractor={(item) => `${item.orderId}-${item.sellerId}`}
-                    renderItem={renderPickupAssignmentItem}
-                    contentContainerStyle={{ paddingBottom: 20 }}
-                />
-            )}
-
-            <Text className="text-xl font-bold mt-5 mb-2.5 px-2.5 text-primary-dark">Mis Envíos Asignados</Text>
-            {shipments.length === 0 ? (
-                <Text className="text-center mt-5 text-base text-primary-dark">No tienes envíos asignados.</Text>
-            ) : (
-                <FlatList
-                    data={shipments}
-                    keyExtractor={(item) => item._id.toString()}
-                    renderItem={renderShipmentItem}
-                    contentContainerStyle={{ paddingBottom: 20 }}
-                />
-            )}
-        </View>
+        <LinearGradient
+            colors={['#7CDFFF', '#14BFFB']}
+            style={{ flex: 1 }}
+        >
+            <Header isOnline={isOnline} />
+            <View className="flex-1">
+                {renderContent()}
+            </View>
+        </LinearGradient>
     );
 };
 

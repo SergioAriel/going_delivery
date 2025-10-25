@@ -1,49 +1,55 @@
-// 👇 Estas líneas deben estar antes de cualquier otro import
-import { Poppins_400Regular, Poppins_700Bold, useFonts } from '@expo-google-fonts/poppins';
+import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { useFonts } from 'expo-font';
+import { Slot } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
+import { useEffect } from 'react';
 import { PrivyProvider } from '@privy-io/expo';
-import { PrivyElements } from '@privy-io/expo/ui';
-import { Stack } from 'expo-router';
-import React from 'react';
 import { SocketProvider } from '../src/contexts/SocketContext';
+import { DriverTaskProvider } from '../context/DriverTaskContext'; // Import the new provider
+import { PrivyElements } from '@privy-io/expo/ui';
 
+// Prevent the splash screen from auto-hiding before asset loading is complete.
+SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
-    Poppins_400Regular,
-    Poppins_700Bold,
+  const [loaded] = useFonts({
+    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
 
-  if (!fontsLoaded) {
-    return null; // O un componente de carga
+  useEffect(() => {
+    if (loaded) {
+      SplashScreen.hideAsync();
+    }
+  }, [loaded]);
+
+  if (!loaded) {
+    return null;
   }
 
+  if (!process.env.EXPO_PUBLIC_PRIVY_APP_ID || !process.env.EXPO_PUBLIC_PRIVY_CLIENT) {
+    console.error("ERROR: Las variables de entorno de Privy (appId o clientId) no están definidas.");
+    // Devuelve un componente de error simple o sigue mostrando la Splash Screen
+    return null; 
+  }
+  console.log("Privy App ID:", process.env.EXPO_PUBLIC_PRIVY_APP_ID);
+  console.log("Privy Client ID:", process.env.EXPO_PUBLIC_PRIVY_CLIENT);
+
   return (
+  <>
     <PrivyProvider
-      appId={"cmcdclvuo023nlb0mr1df4ktw"}
-      clientId={"client-WY6N2yUvqaAu7YyJ7N81cZjA4NXRw23835GmEBH1CChsQ"}
+      appId={process.env.EXPO_PUBLIC_PRIVY_APP_ID as string}
+      clientId={process.env.EXPO_PUBLIC_PRIVY_CLIENT as string}
+
     >
       <SocketProvider>
-        <Stack
-          screenOptions={{
-            headerStyle: {
-              backgroundColor: '#14BFFB',
-            },
-            headerTintColor: '#fff',
-            headerTitleStyle: {
-              fontFamily: 'Poppins_700Bold',
-            },
-          }}
-        >
-          <Stack.Screen name="index" options={{ title: 'GOING' }} />
-          <Stack.Screen name="dashboard" options={{ title: 'Dashboard' }} />
-          <Stack.Screen
-            name="pickup-details/[orderId]/[sellerId]/"
-            options={{ title: 'Details of shipment', presentation: 'modal' }} // 'presentation: modal' es opcional, pero común para detalles
-          />
-        </Stack>
-        <PrivyElements config={{ appearance: { accentColor: '#00AF55' } }} />
-
+        <DriverTaskProvider>
+          <ThemeProvider value={DefaultTheme}>
+            <Slot />
+          </ThemeProvider>
+        </DriverTaskProvider>
       </SocketProvider>
+    <PrivyElements />
     </PrivyProvider>
+  </>
   );
 }

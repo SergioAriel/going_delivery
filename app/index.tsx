@@ -3,7 +3,10 @@ import { useLogin } from '@privy-io/expo/ui';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useEffect } from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { View } from 'react-native';
+import { ThemedText } from '../components/ThemedText';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Button } from '../components/ui/Button';
 
 const LoginScreen = () => {
     const router = useRouter();
@@ -30,32 +33,25 @@ const LoginScreen = () => {
     if (!isReady) {
         return (
             <View className="flex-1 justify-center items-center bg-accent">
-                <Text className="text-primary font-bold">Cargando...</Text>
+                <ThemedText type="defaultSemiBold">Cargando...</ThemedText>
             </View>
         );
     }
 
     return (
-        <LinearGradient
-            colors={['#7CDFFF', '#14BFFB']}
-            className="flex-1 justify-center items-center p-5"
-        >
-            <Text className="text-5xl font-bold mb-2.5 text-primary shadow-lg">GOING</Text>
-            <Text className="text-lg text-center mb-10 text-primary">
-                Entregas a la velocidad del ahora.
-            </Text>
+        <SafeAreaView className="flex-1">
+            <LinearGradient
+                colors={['#7CDFFF', '#14BFFB']}
+                className="flex-1 justify-center items-center p-5"
+            >
+                <ThemedText type="title" className="mb-2.5 text-primary shadow-lg">GOING</ThemedText>
+                <ThemedText type="subtitle" className="text-center mb-10 text-primary">
+                    Entregas a la velocidad del ahora.
+                </ThemedText>
 
-            <TouchableOpacity onPress={() => handlerLogin()}>
-                <LinearGradient
-                    colors={['#14BFFB', '#D300E5']}
-                    className="py-4 px-10 rounded-lg shadow-lg"
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                >
-                    <Text className="text-white text-lg font-bold">Iniciar Sesión</Text>
-                </LinearGradient>
-            </TouchableOpacity>
-        </LinearGradient>
+                <Button title="Iniciar SesiÃ³n" onPress={handlerLogin} />
+            </LinearGradient>
+        </SafeAreaView>
     );
 };
 

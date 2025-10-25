@@ -1,10 +1,36 @@
-export interface User {
-  _id: string;
+// --- Tipos Fundamentales ---
+
+export type DriverStatus = 'IDLE' | 'COLLECTING_BATCH' | 'ROUTING_TO_HUB' | 'DELIVERING_BATCH' | 'PERFORMING_DIRECT_ROUTE';
+export type ShippingType = 'going_network' | 'self_delivery';
+
+// --- Entidades Principales ---
+
+export interface Address {
   name: string;
-  addresses: Addresses[];
+  street: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  country: string;
+  phone: string;
+  email: string;
+  lat?: number;
+  lon?: number; // Opcional en la entrada, obligatorio en el sistema.
+}
+
+export interface GeocodedAddress extends Address {
+  lat: number;
+  lon: number;
+}
+
+export interface User {
+  _id?: string;
+  fullName: string;
+  addresses: Address[];
   email: string;
   avatar: string;
   joined: string;
+  location: string;
   bio: string;
   website: string;
   twitter: string;
@@ -13,44 +39,22 @@ export interface User {
   telegram: string;
   facebook: string;
   isSeller: boolean;
-  isDriver?: boolean; // Added for delivery drivers
-  currentLocation?: { lat: number; lng: number }; // Added for delivery drivers
+  isDriver?: boolean;
+  driverDetails?: {
+    status?: DriverStatus;
+    idleSince?: Date;
+    vehicle?: Vehicle;
+  };
   wishlist: string[];
   settings: {
     theme: "light" | "dark" | "system";
     currency: string;
-    lenguage: string;
+    language: string;
   }
-}
-export interface Addresses {
-  name: string;
-  street: string;
-  city: string;
-  state: string;
-  country: string;
-  zipCode: string;
-  phone: string;
-  lat?: number; // Added for geocoding
-  lng?: number; // Added for geocoding
-}
-export interface CreateProduct {
-  seller: string;
-  stock?: number;
-  location?: string;
-  condition?: string;
-  name: string;
-  description: string;
-  category: string;
-  price: number;
-  currency: string;
-  images: Array<File>;
-  tags?: string;
-  isService?: boolean;
-  addressWallet?: string;
 }
 
 export interface Product {
-  _id: string;
+  _id?: string;
   seller: string;
   name: string;
   addressWallet: string;
@@ -58,7 +62,9 @@ export interface Product {
   category: string;
   price: number;
   currency: string;
-  status: string;
+  shippingType: ShippingType;
+  pickupAddress: Address; // En el producto, la dirección puede no estar geocodificada aún.
+  publishStatus: "published" | "unpublished";
   images: Array<string | File>;
   mainImage: string;
   stock: number;
@@ -74,72 +80,125 @@ export interface Product {
   subcategory?: string;
   createdAt?: Date;
   updatedAt?: Date;
+  weight_kg?: number;
+  width_cm?: number;
+  height_cm?: number;
+  depth_cm?: number;
+  isFragile?: boolean;
+  estimatedDeliveryDays?: number;
 }
 
-export interface CartItem extends Partial<Product> {
-  _id: string ;
-  seller: string;
+export interface CartItem {
+  _id: string; // El _id del producto
   name: string;
   price: number;
   mainImage: string;
-  quantity: number;
+  seller: string;
   addressWallet: string;
   currency: string;
+  shippingType: ShippingType;
+  pickupAddress: Address; // La dirección del producto se copia aquí.
+  weight_kg?: number;
+  width_cm?: number;
+  height_cm?: number;
+  depth_cm?: number;
+  estimatedDeliveryDays?: number;
+  quantity: number;
   isOffer?: boolean;
-  offerPercentage: number;
-  // convertedPrice: number;
+  offerPercentage?: number;
 }
 
 export interface Order {
-  _id: string;
+  _id?: string;
   date: Date;
-  status: string;
+  status: 'payment_pending' | 'processing' | 'completed' | 'cancelled';
   buyer: {
     walletAddress: string;
     _id?: string;
+    address: Address; // La dirección del comprador puede no estar geocodificada aún.
   };
-  decryptedAddress?: AddressForm;
   sellers: string[];
+  shipments: string[];
   signature: string;
-  driverId?: string;
-  // totalPrice: number;
-  items: {
-    _id: string;
-    price: number;
-    quantity: number;
-    name: string;
-    image: string;
-    currency: string;
-    seller: string
-  }[];
+  items: CartItem[];
 }
 
-export interface Shipment {
-  _id: string;
+// --- Modelos de Envío (Shipment) ---
+
+export interface BaseShipment {
   orderId: string;
   sellerId: string;
-  driverId: string;
-  status: 'pending_assignment' | 'en_route_to_pickup' | 'in_transit' | 'delivered';
-  items: Order['items'];
+  buyerId: string;
+  shippingType: ShippingType;
+  deliveryAddress: GeocodedAddress; // Obligatorio que esté geocodificada
+  pickupAddress: GeocodedAddress;   // Obligatorio que esté geocodificada
+  items: CartItem[];
   createdAt: Date;
   updatedAt: Date;
 }
 
-export interface OrderWithEncryptedAddress extends Omit<Order, 'decryptedAddress'> {
-  encryptedAddress: EncryptedData;
+export interface GoingNetworkShipment extends BaseShipment {
+  shippingType: 'going_network';
+  status: 'pending' | 'ready_to_ship' | 'in_transit' | 'shipped' | 'delivered' | 'cancelled';
+  deliveryDetails?: {
+    driverId: string;
+    trackingNumber?: string;
+    confirmedDeliveryDays?: number;
+  };
 }
 
-export interface AddressForm {
-  fullName: string;
-  street: string;
-  city: string;
-  state: string;
-  zip: string;
-  country: string;
-  phone: string;
-  email: string;
-  lat?: number; // Added for geocoding
-  lng?: number; // Added for geocoding
+export interface SelfDeliveryShipment extends BaseShipment {
+  shippingType: 'self_delivery';
+  status: 'shipped_by_seller' | 'completed' | 'cancelled' | 'dispute';
+  deliveryDetails?: {
+    confirmedDeliveryDays: number;
+    trackingNumber?: string;
+  };
+}
+
+export type Shipment = (GoingNetworkShipment | SelfDeliveryShipment) & { 
+  _id?: string; 
+};
+
+// --- Logística y Tareas de Conductor ---
+
+export interface Batch {
+  _id?: string;
+  batchId?: string; // Temporary ID for in-memory operations
+  type: 'HYPER_LOCAL' | 'DIRECT' | 'HUB_AND_SPOKE';
+  status: 'pending_assignment' | 'assigned' | 'in_progress' | 'completed' | 'cancelled';
+  shipments: (Shipment & { _id: string })[];
+  assignedCollectorId?: string;
+  assignedDelivererId?: string;
+  hubLocation?: Coordinate;
+  createdAt: Date;
+}
+
+export interface RendezvousInfo {
+  partnerDriver: {
+    name: string;
+  };
+  etaSeconds: number;
+}
+
+export interface DriverTask {
+  status: DriverStatus;
+  batch?: Batch;
+  hubLocation?: Coordinate;
+  rendezvousInfo?: RendezvousInfo;
+  route?: any;
+}
+
+// --- Tipos Auxiliares y de Servidor ---
+
+export type NewOrderPayload = Omit<Order, '_id' | 'shipments' | 'signature'>;
+
+export type Coordinate = { lat: number; lon: number };
+
+export interface Vehicle {
+  type: 'motorcycle' | 'car' | 'van';
+  max_payload_kg: number;
+  max_volume_m3: number;
 }
 
 export interface EncryptedData {
@@ -148,15 +207,12 @@ export interface EncryptedData {
   tag: string;
 }
 
-export interface Reviews {
-  _id: string;
-  text: string;
-  rating: number;
-}
-
-
-export type Currency = {
-	symbol: string,
-	name: string,
-	price: number,
+export interface DriverState {
+    socketId: string;
+    driverId: string;
+    lat: number;
+    lon: number;
+    status: DriverStatus;
+    idleSince: number;
+    quadrantId: string;
 }
