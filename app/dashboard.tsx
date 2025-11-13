@@ -26,7 +26,8 @@ const mockBatch: Batch = {
             sellerId: 'seller_789',
             buyerId: 'buyer_101',
             shippingType: 'going_network',
-            status: 'in_transit',
+            status: 'ready_to_ship', // Para probar el botón de "Escanear QR" en la pantalla de recolección
+            // status: 'in_transit',    // Para probar el flujo normal
             createdAt: new Date(),
             updatedAt: new Date(),
             pickupAddress: {
@@ -89,6 +90,30 @@ const mockBatch: Batch = {
                 lon: -58.43,
             },
             items: [{ _id: 'prod_uvw', name: 'Libro de Ciencia Ficción', price: 30, quantity: 1, mainImage: '', seller: '', addressWallet: '', currency: 'USD', shippingType: 'going_network', pickupAddress: {} as any }],
+        },
+        {
+            _id: 'shipment_ghi',
+            orderId: 'order_003',
+            sellerId: 'seller_008',
+            buyerId: 'buyer_103',
+            shippingType: 'going_network',
+            status: 'ready_to_ship', // Correct status for pickup
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            pickupAddress: {
+                name: 'Kiosco "El Sol"',
+                street: 'Av. Pueyrredón 800',
+                city: 'Buenos Aires',
+                state: 'CABA',
+                zipCode: 'C1032AAS',
+                country: 'Argentina',
+                phone: '11-5555-9999',
+                email: 'contacto@kioscoelsol.com',
+                lat: -34.601,
+                lon: -58.40,
+            },
+            deliveryAddress: { name: 'Test User', street: 'Test Street', city: 'Test City', state: 'TS', zipCode: '12345', country: 'Test Country', phone: '123', email: 'test@test.com', lat: 0, lon: 0 },
+            items: [{ _id: 'prod_abc', name: 'Alfajor de Maicena', price: 5, quantity: 2, mainImage: '', seller: '', addressWallet: '', currency: 'USD', shippingType: 'going_network', pickupAddress: {} as any }],
         }
     ]
 };
@@ -128,7 +153,7 @@ const DashboardScreen = () => {
              return (
                 <View className="flex-1 justify-center items-center p-4">
                     <ActivityIndicator size="large" color="#fff" />
-                    <ThemedText className="mt-2">Loading Task...</ThemedText>
+                    <Text className="mt-2">Loading Task...</Text>
                 </View>
              );
         }
@@ -145,7 +170,7 @@ const DashboardScreen = () => {
             default:
                  return (
                     <View className="flex-1 justify-center items-center p-6">
-                        <ThemedText>Unknown Task Status</ThemedText>
+                        <Text>Unknown Task Status</Text>
                     </View>
                  );
         }

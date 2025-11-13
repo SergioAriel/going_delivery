@@ -1,7 +1,7 @@
 import { usePrivy } from '@privy-io/expo';
 import { useLogin } from '@privy-io/expo/ui';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useRouter, useRootNavigationState } from 'expo-router';
 import React, { useEffect } from 'react';
 import { View } from 'react-native';
 import { ThemedText } from '../components/ThemedText';
@@ -11,23 +11,26 @@ import { Button } from '../components/ui/Button';
 const LoginScreen = () => {
     const router = useRouter();
     const { isReady, user } = usePrivy();
-    const { login } = useLogin()
+    const { login } = useLogin();
+    const navigationState = useRootNavigationState();
 
     useEffect(() => {
+        // Do not navigate until the navigation state is ready
+        if (!navigationState?.key) return;
+
         if (user) {
             router.replace('/dashboard');
         }
-    }, [user, router]);
+    }, [user, navigationState?.key, router]);
 
 
     const handlerLogin = async () => {
-        const result = await login({ loginMethods: ['google'] })
-        .then((res) => {
-            console.log('Login result:', res)
-        })
-        .catch((error) => {
-            console.error('Login error:', error)
-        })
+        try {
+            const result = await login({ loginMethods: ['google'] });
+            console.log('Login result:', result);
+        } catch (error) {
+            console.error('Login error:', error);
+        }
     }
 
     if (!isReady) {

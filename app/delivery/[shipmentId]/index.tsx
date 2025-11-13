@@ -1,10 +1,11 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React from 'react';
-import { Alert, Linking, ScrollView, Text, TouchableOpacity, View, Platform } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import { Alert, Linking, Text, TouchableOpacity, View, StyleSheet, Platform, ScrollView } from 'react-native';
+import MapLibreGL, { Camera, MapView, PointAnnotation } from '@maplibre/maplibre-react-native';
 import { useSocket } from '@/src/contexts/SocketContext';
 import { useDriverTask } from '@/context/DriverTaskContext';
 import QRCode from 'react-native-qrcode-svg';
+import Constants from 'expo-constants';
 
 const DeliveryDetailScreen = () => {
   const { shipmentId } = useLocalSearchParams<{ shipmentId: string }>();
@@ -12,8 +13,8 @@ const DeliveryDetailScreen = () => {
   const socket = useSocket();
   const { activeTask } = useDriverTask();
 
-  // Find the specific shipment from the batch in the context
   const shipment = activeTask?.batch?.shipments.find(s => s._id === shipmentId);
+  const MAPTILER_API_KEY = Constants.expoConfig?.extra?.MAPTILER_API_KEY;
 
   const handleConfirmDelivery = () => {
     Alert.alert(
@@ -27,7 +28,7 @@ const DeliveryDetailScreen = () => {
             if (socket && shipment) {
               socket.emit('confirm_delivery', { shipmentId: shipment._id });
               Alert.alert("Success", "Delivery confirmed!");
-              router.back(); // Go back to the list
+              router.back();
             }
           }
         }
@@ -44,9 +45,9 @@ const DeliveryDetailScreen = () => {
 
   if (!shipment) {
     return (
-        <View className="flex-1 justify-center items-center">
-            <Text className="text-red-500">Error: Shipment data not found in active task.</Text>
-            <TouchableOpacity onPress={() => router.back()}><Text className="text-primary mt-5">Go Back</Text></TouchableOpacity>
+        <View style={styles.container}>
+            <Text style={{color: 'red'}}>Error: Shipment data not found in active task.</Text>
+            <TouchableOpacity onPress={() => router.back()}><Text style={{color: 'blue', marginTop: 20}}>Go Back</Text></TouchableOpacity>
         </View>
     );
   }
@@ -55,78 +56,121 @@ const DeliveryDetailScreen = () => {
   const hasCoords = deliveryAddress.lat && deliveryAddress.lon;
 
   return (
-    <ScrollView className="flex-1 bg-gray-100">
-      <View className="p-5">
-        <Text className="text-3xl font-bold text-gray-800 mb-2">Order #{shipment.orderId.substring(shipment.orderId.length - 6)}</Text>
-        <Text className="text-lg text-gray-500 mb-6">Status: <Text className="font-semibold capitalize">{shipment.status}</Text></Text>
+    <ScrollView style={styles.container} contentContainerStyle={{ paddingVertical: 20 }}>
+        <Text style={styles.title}>Order #{shipment.orderId.substring(shipment.orderId.length - 6)}</Text>
+        <Text style={styles.subtitle}>Status: <Text style={{fontWeight: 'bold'}}>{shipment.status}</Text></Text>
 
         {hasCoords && (
-          <View className="mb-6 rounded-lg overflow-hidden border border-gray-200">
+          <View style={{ marginBottom: 24, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#e5e7eb' }}>
             <MapView
-              className="h-64"
-              initialRegion={{
-                latitude: deliveryAddress.lat!,
-                longitude: deliveryAddress.lon!,
-                latitudeDelta: 0.01,
-                longitudeDelta: 0.01,
-              }}
+              style={{ height: 256 }}
+              mapStyle={`https://api.maptiler.com/maps/dataviz/style.json?key=${MAPTILER_API_KEY}`}
             >
-              <Marker
-                coordinate={{ latitude: deliveryAddress.lat!, longitude: deliveryAddress.lon! }}
-                title={deliveryAddress.name}
-                description={deliveryAddress.street}
+              <Camera
+                defaultSettings={{
+                  centerCoordinate: [deliveryAddress.lon!, deliveryAddress.lat!],
+                  zoomLevel: 14,
+                }}
               />
+              <PointAnnotation
+                id={shipment._id}
+                coordinate={[deliveryAddress.lon!, deliveryAddress.lat!]}
+              >
+                <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#3b82f6', borderWidth: 2, borderColor: 'white' }} />
+              </PointAnnotation>
             </MapView>
             <TouchableOpacity
               onPress={() => openInMaps(deliveryAddress.lat!, deliveryAddress.lon!, deliveryAddress.street)}
-              className="bg-blue-500 p-3 items-center"
+              style={{ backgroundColor: '#3b82f6', padding: 12, alignItems: 'center' }}
             >
-              <Text className="text-white font-bold">Open in Maps</Text>
+              <Text style={{ color: 'white', fontWeight: 'bold' }}>Open in Maps</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        <View className="bg-white p-4 rounded-lg shadow-md mb-6">
-          <Text className="text-xl font-semibold text-gray-800 mb-3">Delivery Address</Text>
-          <Text className="text-base text-gray-600">{deliveryAddress.name}</Text>
-          <Text className="text-base text-gray-600">{deliveryAddress.street}</Text>
-          <Text className="text-base text-gray-600">{deliveryAddress.city}, {deliveryAddress.state} {deliveryAddress.zipCode}</Text>
-          <Text className="text-base text-gray-600">{deliveryAddress.country}</Text>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Delivery Address</Text>
+          <Text style={styles.cardText}>{deliveryAddress.name}</Text>
+          <Text style={styles.cardText}>{deliveryAddress.street}</Text>
+          <Text style={styles.cardText}>{deliveryAddress.city}, {deliveryAddress.state} {deliveryAddress.zipCode}</Text>
+          <Text style={styles.cardText}>{deliveryAddress.country}</Text>
           <TouchableOpacity onPress={() => Linking.openURL(`tel:${deliveryAddress.phone}`)}>
-            <Text className="text-base text-blue-500 mt-2">{deliveryAddress.phone}</Text>
+            <Text style={{...styles.cardText, color: '#3b82f6', marginTop: 8}}>{deliveryAddress.phone}</Text>
           </TouchableOpacity>
         </View>
 
-        <View className="bg-white p-4 rounded-lg shadow-md">
-          <Text className="text-xl font-semibold text-gray-800 mb-3">Items</Text>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Items</Text>
           {shipment.items.map((item, index) => (
-            <View key={index} className="flex-row justify-between items-center py-2 border-b border-gray-200">
-              <Text className="text-base text-gray-700">{item.quantity}x {item.name}</Text>
-              <Text className="text-base font-medium text-gray-800">${item.price.toFixed(2)}</Text>
+            <View key={index} style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, paddingBottom: 8, borderBottomWidth: 1, borderColor: '#e5e7eb'}}>
+              <Text style={styles.cardText}>{item.quantity}x {item.name}</Text>
+              <Text style={{...styles.cardText, fontWeight: '500'}}>${item.price.toFixed(2)}</Text>
             </View>
           ))}
         </View>
 
         {shipment.status === 'in_transit' && (
-            <View className="items-center">
-                <Text className="text-lg font-bold mt-6 mb-2.5 text-center">Confirm Delivery</Text>
-                <Text className="text-base text-center mb-5 text-primary-dark">
+            <View style={{alignItems: 'center'}}>
+                <Text style={{fontSize: 18, fontWeight: 'bold', marginTop: 24, marginBottom: 10, textAlign: 'center'}}>Confirm Delivery</Text>
+                <Text style={{fontSize: 16, textAlign: 'center', marginBottom: 20, color: '#4b5563'}}>
                     Ask the customer to scan this QR code to confirm delivery.
                 </Text>
-                <View className="p-4 rounded-lg mb-5 bg-white">
+                <View style={{padding: 16, borderRadius: 12, marginBottom: 20, backgroundColor: 'white'}}>
                     <QRCode value={shipment._id!} size={180} backgroundColor="white" color="black" />
                 </View>
                 <TouchableOpacity
                     onPress={handleConfirmDelivery}
-                    className="bg-green-500 mt-4 py-4 rounded-lg shadow-lg w-full items-center"
+                    style={{backgroundColor: '#22c55e', marginTop: 16, paddingTop: 16, paddingBottom: 16, borderRadius: 12, width: '100%', alignItems: 'center'}}
                 >
-                    <Text className="text-white text-center text-lg font-bold">Force Confirm Delivery</Text>
+                    <Text style={{color: 'white', textAlign: 'center', fontSize: 18, fontWeight: 'bold'}}>Force Confirm Delivery</Text>
                 </TouchableOpacity>
             </View>
         )}
-      </View>
     </ScrollView>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f3f4f6',
+    padding: 20,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 18,
+    color: '#6b7280',
+    marginBottom: 24,
+  },
+  card: {
+    backgroundColor: 'white',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 24,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.23,
+    shadowRadius: 2.62,
+    elevation: 4,
+  },
+  cardTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginBottom: 12,
+  },
+  cardText: {
+    fontSize: 16,
+    color: '#4b5563',
+  }
+});
 
 export default DeliveryDetailScreen;

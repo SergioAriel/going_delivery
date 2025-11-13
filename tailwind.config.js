@@ -21,6 +21,9 @@ module.exports = {
         'gradient-primary': 'linear-gradient(135deg, #7CDFFF, #14BFFB, #0e9bd9)',
         'gradient-secondary': 'linear-gradient(135deg, #F26EFF, #D300E5, #a900b8)',
         'gradient-brand': 'linear-gradient(135deg, #14BFFB, #D300E5)',
+      },
+      fontFamily: {
+        sans: ['Cambay', 'sans-serif'],
       }
     },
   },
