@@ -20,7 +20,8 @@ export default function ScanQR() {
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
     setScanned(true);
     try {
-      const response = await fetch(`https://going-git-delivery-sergioariels-projects.vercel.app/api/orders/${data}`,
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+      const response = await fetch(`${apiUrl}/api/shipments/${data}`,
         {
           method: 'PATCH',
           headers: {
@@ -30,16 +31,16 @@ export default function ScanQR() {
         });
 
       if (response.ok) {
-        Alert.alert('Success', 'Order picked up successfully.', [
+        Alert.alert('Success', 'Shipment picked up successfully.', [
           { text: 'OK', onPress: () => router.replace(`/delivery/${data}`) },
         ]);
       } else {
         const errorData = await response.json();
-        Alert.alert("Error", errorData.message || "Failed to update order");
+        Alert.alert("Error", errorData.message || "Failed to update shipment");
         setScanned(false);
       }
     } catch (error) {
-      console.error('Error updating order:', error);
+      console.error('Error updating shipment:', error);
       Alert.alert("Error", "An unexpected error occurred.");
       setScanned(false);
     }

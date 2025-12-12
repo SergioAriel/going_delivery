@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, StyleSheet, Linking, Alert, Share, Dimensions } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, StyleSheet, Linking, Alert, Share, Dimensions, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Shipment } from '../../interfaces';
 import { ChevronRightIcon, MapPinIcon } from 'react-native-heroicons/solid';
@@ -15,7 +15,7 @@ const PANEL_HEIGHT = SCREEN_HEIGHT * 0.40;
 // --- Helper to decode OSRM polyline
 function decodePolyline(encoded: string): [number, number][] {
     if (!encoded) return [];
-    let poly = [], index = 0, len = encoded.length, lat = 0, lng = 0;
+    let poly: [number, number][] = [], index = 0, len = encoded.length, lat = 0, lng = 0;
     while (index < len) {
         let b, shift = 0, result = 0;
         do {
@@ -40,28 +40,33 @@ function decodePolyline(encoded: string): [number, number][] {
 }
 
 const PickupStopCard = ({ shipment, onPress, stopNumber, isActive }: { shipment: Shipment & { _id: string }, onPress: () => void, stopNumber: number, isActive: boolean }) => {
-    const cardClasses = isActive ? "bg-gray-700 opacity-100" : "bg-gray-800 opacity-50";
-    const circleClasses = isActive ? "bg-blue-500" : "bg-gray-600";
+    const cardClasses = isActive ? "bg-surface-highlight border-primary" : "bg-surface border-white/10";
+    const circleClasses = isActive ? "bg-primary" : "bg-surface-highlight";
 
     return (
-        <TouchableOpacity onPress={onPress} disabled={!isActive} className={`p-4 rounded-2xl shadow-md border border-gray-700 mb-4 mx-4 ${cardClasses}`}>
+        <TouchableOpacity onPress={onPress} className={`p-4 rounded-2xl shadow-md border mb-4 mx-4 ${cardClasses}`}>
             <View className="flex-row items-center">
                 <View className={`w-10 h-10 rounded-full items-center justify-center ${circleClasses}`}>
                     <Text className="text-lg font-bold text-white">{stopNumber}</Text>
                 </View>
                 <View className="flex-1 ml-4">
-                    <Text className="text-lg font-bold text-white" numberOfLines={1}>{shipment.pickupAddress.name}</Text>
+                    <Text className="text-lg font-bold text-white" numberOfLines={1}>{shipment.pickupAddress.fullName}</Text>
                     <Text className="text-base text-gray-400" numberOfLines={1}>{shipment.pickupAddress.street}</Text>
                 </View>
-                <ChevronRightIcon size={24} color={isActive ? "#9CA3AF" : "#4B5563"} />
+                <ChevronRightIcon size={24} color={isActive ? "#14BFFB" : "#9CA3AF"} />
             </View>
         </TouchableOpacity>
     );
 };
 
+
+
+import { usePrivy } from '@privy-io/expo';
+
 export const CollectingBatchView = () => {
     const router = useRouter();
     const { activeTask } = useDriverTask();
+    const { user } = usePrivy();
     const cameraRef = useRef<any>(null);
     const [routeShape, setRouteShape] = useState<GeoJSON.Feature<GeoJSON.LineString> | null>(null);
     const [pointFeatures, setPointFeatures] = useState<FeatureCollection<Point> | null>(null);
@@ -70,7 +75,7 @@ export const CollectingBatchView = () => {
 
     useEffect(() => {
         if (activeTask?.batch?.shipments) {
-            const activeIndex = activeTask.batch.shipments.findIndex(s => s.status === 'ready_to_ship');
+            const activeIndex = activeTask.batch.shipments.findIndex(s => ['ready_to_ship', 'batched'].includes(s.status));
             const features: Feature<Point>[] = activeTask.batch.shipments
                 .filter(s => s.pickupAddress.lon != null && s.pickupAddress.lat != null)
                 .map((s, index) => ({
@@ -85,7 +90,7 @@ export const CollectingBatchView = () => {
                         isActive: index === activeIndex,
                     },
                 }));
-            
+
             setPointFeatures({
                 type: 'FeatureCollection',
                 features: features,
@@ -119,28 +124,96 @@ export const CollectingBatchView = () => {
     useEffect(() => {
         if (pointFeatures && pointFeatures.features.length > 0) {
             const coordinates = pointFeatures.features.map(f => f.geometry.coordinates);
-            
+
             const timer = setTimeout(() => {
-                cameraRef.current?.fitBounds?.(
-                    [Math.min(...coordinates.map(c => c[0])), Math.min(...coordinates.map(c => c[1]))],
-                    [Math.max(...coordinates.map(c => c[0])), Math.max(...coordinates.map(c => c[1]))],
-                    [120, 70, 20, 70],
-                    300
-                );
+                if (coordinates.length === 1) {
+                    cameraRef.current?.setCamera({
+                        centerCoordinate: coordinates[0],
+                        zoomLevel: 15,
+                        animationDuration: 300,
+                    });
+                } else {
+                    cameraRef.current?.fitBounds?.(
+                        [Math.min(...coordinates.map(c => c[0])), Math.min(...coordinates.map(c => c[1]))],
+                        [Math.max(...coordinates.map(c => c[0])), Math.max(...coordinates.map(c => c[1]))],
+                        [120, 70, 20, 70],
+                        300
+                    );
+                }
             }, 300);
 
             return () => clearTimeout(timer);
         }
     }, [pointFeatures, routeShape]);
 
-    const handleStartNavigation = () => { /* ... */ };
+    const handleStartNavigation = () => {
+        if (!activeTask || !activeTask.batch) return;
+
+        const activeIndex = activeTask.batch.shipments.findIndex(s => ['ready_to_ship', 'batched'].includes(s.status));
+        if (activeIndex === -1) {
+            Alert.alert("Navigation", "No active shipment found.");
+            return;
+        }
+
+        const targetShipment = activeTask.batch.shipments[activeIndex];
+        const { lat, lon } = targetShipment.pickupAddress;
+        const label = targetShipment.pickupAddress.fullName;
+
+        const openMap = (url: string) => {
+            Linking.openURL(url).catch(err => {
+                console.error('An error occurred', err);
+                Alert.alert("Error", "Could not open map application.");
+            });
+        };
+
+        if (Platform.OS === 'ios') {
+            Alert.alert(
+                "Start Navigation",
+                "Choose a map app:",
+                [
+                    {
+                        text: "Apple Maps",
+                        onPress: () => openMap(`maps:0,0?q=${lat},${lon}(${label})`)
+                    },
+                    {
+                        text: "Google Maps",
+                        onPress: () => openMap(`comgooglemaps://?q=${lat},${lon}&center=${lat},${lon}`)
+                    },
+                    {
+                        text: "Waze",
+                        onPress: () => openMap(`waze://?ll=${lat},${lon}&navigate=yes`)
+                    },
+                    { text: "Cancel", style: "cancel" }
+                ]
+            );
+        } else {
+            // Android - Intent selection is handled by OS usually, but we can try specific schemes if needed.
+            // For now, standard geo intent is best, but user specifically asked for Google Maps option.
+            // We can offer a choice if we want to be explicit.
+            Alert.alert(
+                "Start Navigation",
+                "Choose a map app:",
+                [
+                    {
+                        text: "Google Maps",
+                        onPress: () => openMap(`google.navigation:q=${lat},${lon}`)
+                    },
+                    {
+                        text: "Waze",
+                        onPress: () => openMap(`waze://?ll=${lat},${lon}&navigate=yes`)
+                    },
+                    { text: "Cancel", style: "cancel" }
+                ]
+            );
+        }
+    };
 
     if (!activeTask || !activeTask.batch) {
         return <ActivityIndicator />;
     }
 
     const { batch } = activeTask;
-    const activeShipmentIndex = batch.shipments.findIndex(s => s.status === 'ready_to_ship');
+    const activeShipmentIndex = batch.shipments.findIndex(s => ['ready_to_ship', 'batched'].includes(s.status));
 
     const handleItemPress = (shipmentId: string) => {
         router.push(`/pickup-details/${shipmentId}`);
@@ -152,7 +225,7 @@ export const CollectingBatchView = () => {
         <View style={styles.container}>
             <MapView style={styles.map} mapStyle={`https://api.maptiler.com/maps/dataviz/style.json?key=${MAPTILER_API_KEY}`}>
                 <Camera ref={cameraRef} />
-                
+
                 {routeShape && (
                     <ShapeSource id="routeSource" shape={routeShape}>
                         <LineLayer
@@ -197,7 +270,7 @@ export const CollectingBatchView = () => {
                     </ShapeSource>
                 )}
             </MapView>
-            
+
             <TouchableOpacity onPress={handleStartNavigation} style={styles.navigationButton}>
                 <MapPinIcon size={24} color="white" />
                 <Text style={styles.navigationButtonText}>Start Navigation</Text>
@@ -216,15 +289,9 @@ export const CollectingBatchView = () => {
                         />
                     ))}
                 </ScrollView>
-                <View className="p-4 bg-transparent mb-4">
-                    <TouchableOpacity onPress={handleAllCollected}>
-                        <LinearGradient colors={['#14BFFB', '#A188E8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} className="py-3 rounded-full shadow-lg">
-                            <Text className="text-white text-lg font-bold text-center">All Packages Collected</Text>
-                        </LinearGradient>
-                    </TouchableOpacity>
-                </View>
             </View>
         </View>
+        </View >
     );
 };
 

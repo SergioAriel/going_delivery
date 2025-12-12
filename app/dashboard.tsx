@@ -1,161 +1,172 @@
 import { useSocket } from '@/src/contexts/SocketContext';
 import * as Location from 'expo-location';
-import React, { useEffect, useState } from 'react';
+import * as React from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { CollectingBatchView } from '../components/tasks/CollectingBatchView';
 import { DeliveringBatchView } from '../components/tasks/DeliveringBatchView';
 import { RoutingToHubView } from '../components/tasks/RoutingToHubView';
 import { DirectRouteView } from '../components/tasks/DirectRouteView';
 import { useDriverTask } from '../context/DriverTaskContext';
-import { DriverTask, Batch } from '@/interfaces'; // Import Batch
 import { LinearGradient } from 'expo-linear-gradient';
-
-
-// --- MOCK DATA ---
-// Creamos una tarea de prueba para forzar la vista de recolección
-const mockBatch: Batch = {
-    _id: 'batch_123',
-    type: 'HUB_AND_SPOKE',
-    status: 'assigned',
-    assignedCollectorId: 'driver_456',
-    createdAt: new Date(),
-    shipments: [
-        {
-            _id: 'shipment_abc',
-            orderId: 'order_001',
-            sellerId: 'seller_789',
-            buyerId: 'buyer_101',
-            shippingType: 'going_network',
-            status: 'ready_to_ship', // Para probar el botón de "Escanear QR" en la pantalla de recolección
-            // status: 'in_transit',    // Para probar el flujo normal
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            pickupAddress: {
-                name: 'Tienda de Ropa "La Moda"',
-                street: 'Av. Corrientes 1234',
-                city: 'Buenos Aires',
-                state: 'CABA',
-                zipCode: 'C1043AAS',
-                country: 'Argentina',
-                phone: '11-5555-1234',
-                email: 'ventas@lamoda.com',
-                lat: -34.6037,
-                lon: -58.3816,
-            },
-            deliveryAddress: {
-                name: 'Juan Pérez',
-                street: 'Calle Falsa 567',
-                city: 'Buenos Aires',
-                state: 'CABA',
-                zipCode: 'C1425BJH',
-                country: 'Argentina',
-                phone: '11-5555-5678',
-                email: 'juan.perez@email.com',
-                lat: -34.58,
-                lon: -58.42,
-            },
-            items: [{ _id: 'prod_xyz', name: 'Camisa Azul', price: 50, quantity: 1, mainImage: '', seller: '', addressWallet: '', currency: 'USD', shippingType: 'going_network', pickupAddress: {} as any }],
-        },
-        {
-            _id: 'shipment_def',
-            orderId: 'order_002',
-            sellerId: 'seller_007',
-            buyerId: 'buyer_102',
-            shippingType: 'going_network',
-            status: 'in_transit',
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            pickupAddress: {
-                name: 'Librería "El Saber"',
-                street: 'Av. Santa Fe 2345',
-                city: 'Buenos Aires',
-                state: 'CABA',
-                zipCode: 'C1123AAS',
-                country: 'Argentina',
-                phone: '11-5555-4321',
-                email: 'contacto@elsaber.com',
-                lat: -34.595,
-                lon: -58.39,
-            },
-            deliveryAddress: {
-                name: 'Ana Gómez',
-                street: 'Av. del Libertador 4567',
-                city: 'Buenos Aires',
-                state: 'CABA',
-                zipCode: 'C1426BJH',
-                country: 'Argentina',
-                phone: '11-5555-8765',
-                email: 'ana.gomez@email.com',
-                lat: -34.57,
-                lon: -58.43,
-            },
-            items: [{ _id: 'prod_uvw', name: 'Libro de Ciencia Ficción', price: 30, quantity: 1, mainImage: '', seller: '', addressWallet: '', currency: 'USD', shippingType: 'going_network', pickupAddress: {} as any }],
-        },
-        {
-            _id: 'shipment_ghi',
-            orderId: 'order_003',
-            sellerId: 'seller_008',
-            buyerId: 'buyer_103',
-            shippingType: 'going_network',
-            status: 'ready_to_ship', // Correct status for pickup
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            pickupAddress: {
-                name: 'Kiosco "El Sol"',
-                street: 'Av. Pueyrredón 800',
-                city: 'Buenos Aires',
-                state: 'CABA',
-                zipCode: 'C1032AAS',
-                country: 'Argentina',
-                phone: '11-5555-9999',
-                email: 'contacto@kioscoelsol.com',
-                lat: -34.601,
-                lon: -58.40,
-            },
-            deliveryAddress: { name: 'Test User', street: 'Test Street', city: 'Test City', state: 'TS', zipCode: '12345', country: 'Test Country', phone: '123', email: 'test@test.com', lat: 0, lon: 0 },
-            items: [{ _id: 'prod_abc', name: 'Alfajor de Maicena', price: 5, quantity: 2, mainImage: '', seller: '', addressWallet: '', currency: 'USD', shippingType: 'going_network', pickupAddress: {} as any }],
-        }
-    ]
-};
-
-const mockTask: DriverTask = {
-    status: 'COLLECTING_BATCH',
-    batch: mockBatch,
-};
-// --- END MOCK DATA ---
-
-
 import Header from '../components/ui/Header';
-
-// --- Main Dashboard Component (Development Mode) ---
+import { usePrivy } from '@privy-io/expo';
+import { Button } from '../components/ui/Button';
 
 const DashboardScreen = () => {
-    // Forzamos el estado para desarrollo y diseño
-    const { activeTask, setActiveTask } = useDriverTask();
-    const [isOnline, setIsOnline] = useState(true); // FORZADO A TRUE
+    const { activeTask } = useDriverTask();
+    const [isOnline, setIsOnline] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const socket = useSocket();
+    const [locationSubscription, setLocationSubscription] = useState<Location.LocationSubscription | null>(null);
+    const { getAccessToken, user } = usePrivy();
 
-    // Seteamos la tarea de prueba en el contexto al iniciar
+    const stopLocationUpdates = () => {
+        if (locationSubscription) {
+            locationSubscription.remove();
+            setLocationSubscription(null);
+        }
+    };
+
+    const goOnline = async () => {
+        console.log("goOnline called");
+        if (!socket) {
+            console.log("Socket is null, returning");
+            return;
+        }
+        setLoading(true);
+        setError(null);
+
+        try {
+            console.log("Checking existing permissions...");
+            const { status: existingStatus } = await Location.getForegroundPermissionsAsync();
+            console.log("Existing permission status:", existingStatus);
+
+            let status = existingStatus;
+
+            if (existingStatus !== 'granted') {
+                console.log("Requesting location permissions...");
+                // Add a timeout to the permission request to prevent hanging
+                const requestPromise = Location.requestForegroundPermissionsAsync();
+                const timeoutPromise = new Promise<{ status: Location.PermissionStatus }>((resolve) =>
+                    setTimeout(() => resolve({ status: Location.PermissionStatus.UNDETERMINED }), 5000)
+                );
+
+                const result = await Promise.race([requestPromise, timeoutPromise]);
+                status = result.status;
+                console.log("Permission request result:", status);
+            }
+
+            if (status !== 'granted') {
+                setError('Permission to access location was denied or timed out');
+                setLoading(false);
+                return;
+            }
+
+            console.log("Checking location services...");
+            const isLocationEnabled = await Location.hasServicesEnabledAsync();
+            console.log("Location services enabled:", isLocationEnabled);
+            if (!isLocationEnabled) {
+                setError('Location services are disabled. Please enable them in settings.');
+                setLoading(false);
+                return;
+            }
+
+            console.log("Getting access token...");
+            const token = await getAccessToken();
+            console.log("Token retrieved");
+
+            // Send authenticate event with driverId (using user.id from Privy)
+            // Ideally, we should send the token and verify it on server, but for now we send driverId
+            console.log("User object:", user);
+            if (user?.id) {
+                console.log("Emitting authenticate event...");
+                socket.emit('authenticate', { driverId: user.id, token });
+
+                console.log("Starting location watch...");
+                const subscription = await Location.watchPositionAsync(
+                    {
+                        accuracy: Location.Accuracy.High, // Increased accuracy
+                        timeInterval: 1000, // Update every 1 second
+                        distanceInterval: 1, // Update every 1 meter
+                    },
+                    (location) => {
+                        console.log("Location update:", location.coords.latitude, location.coords.longitude);
+                        socket.emit('driverLocationUpdate', {
+                            lat: location.coords.latitude,
+                            lon: location.coords.longitude
+                        });
+                    }
+                );
+                setLocationSubscription(subscription);
+
+                setIsOnline(true);
+                console.log(`Driver ${user.id} went online.`);
+            } else {
+                console.error("User not authenticated properly (missing ID)");
+                setError("User not authenticated properly.");
+            }
+
+        } catch (err) {
+            console.error("Error in goOnline:", err);
+            setError('Error going online: ' + (err instanceof Error ? err.message : String(err)));
+        } finally {
+            setLoading(false);
+            console.log("goOnline finished, loading set to false");
+        }
+    };
+
     useEffect(() => {
-        setActiveTask(mockTask);
-    }, []);
+        if (socket && !isOnline) {
+            console.log(socket.id, isOnline)
+            // Auto-connect if possible or wait for user action?
+            // For demo simplicity, let's auto-connect
+            goOnline();
+        }
 
+        if (socket) {
+            socket.on('disconnect', () => {
+                setIsOnline(false);
+                stopLocationUpdates();
+                console.log("Socket disconnected");
+            });
+        }
 
-    // La lógica de conexión y sockets queda desactivada temporalmente
-    // const [loading, setLoading] = useState(false);
-    // const [error, setError] = useState<string | null>(null);
-    // const socket = useSocket();
-    // const { getAccessToken } = usePrivy();
-    // const goOnline = async () => { ... };
-    // useEffect(() => { ... });
+        return () => {
+            stopLocationUpdates();
+            if (socket) {
+                socket.off('disconnect');
+            }
+        };
+    }, [socket]);
 
     const renderContent = () => {
+        console.log("Rendering content. Active Task:", activeTask ? activeTask.status : "None");
         if (!activeTask) {
-             return (
+            return (
                 <View className="flex-1 justify-center items-center p-4">
-                    <ActivityIndicator size="large" color="#fff" />
-                    <Text className="mt-2">Loading Task...</Text>
+                    {!isOnline ? (
+                        <View className="items-center w-full max-w-xs">
+                            <Text className="text-white text-lg mb-4">You are currently Offline</Text>
+                            {error && (
+                                <Text className="text-error text-center mb-4">{error}</Text>
+                            )}
+                            <Button
+                                title={loading ? "Connecting..." : "Go Online"}
+                                onPress={goOnline}
+                                disabled={loading}
+                            />
+                        </View>
+                    ) : (
+                        <View className="items-center">
+                            <ActivityIndicator size="large" color="#14BFFB" />
+                            <Text className="text-white mt-4 text-lg">Waiting for assignments...</Text>
+                            <Text className="text-text-muted mt-2 text-sm">Your ID: {user?.id}</Text>
+                        </View>
+                    )}
                 </View>
-             );
+            );
         }
 
         switch (activeTask.status) {
@@ -168,21 +179,21 @@ const DashboardScreen = () => {
             case 'PERFORMING_DIRECT_ROUTE':
                 return <DirectRouteView />;
             default:
-                 return (
+                return (
                     <View className="flex-1 justify-center items-center p-6">
-                        <Text>Unknown Task Status</Text>
+                        <Text className="text-white">Unknown Task Status: {activeTask.status}</Text>
                     </View>
-                 );
+                );
         }
     };
 
     return (
         <LinearGradient
-            colors={['#7CDFFF', '#14BFFB']}
+            colors={['#0F172A', '#1E293B']}
             style={{ flex: 1 }}
         >
             <Header isOnline={isOnline} />
-            <View className="flex-1">
+            <View className="flex-1 px-4">
                 {renderContent()}
             </View>
         </LinearGradient>

@@ -6,21 +6,27 @@ export type ShippingType = 'going_network' | 'self_delivery';
 // --- Entidades Principales ---
 
 export interface Address {
-  name: string;
+  fullName: string; // Canonical field for the person/business name at this address
   street: string;
   city: string;
   state: string;
   zipCode: string;
   country: string;
-  phone: string;
-  email: string;
   lat?: number;
   lon?: number; // Opcional en la entrada, obligatorio en el sistema.
+  h3Index?: string;
+  h3IndexL6?: string;
+  h3IndexL8?: string;
+  instructions?: string; // Delivery instructions
+  phone?: string; // Contact phone number
 }
 
 export interface GeocodedAddress extends Address {
   lat: number;
   lon: number;
+  h3Index: string;
+  h3IndexL6: string;
+  h3IndexL8: string;
 }
 
 export interface User {
@@ -44,6 +50,12 @@ export interface User {
     status?: DriverStatus;
     idleSince?: Date;
     vehicle?: Vehicle;
+    socketId?: string;
+    currentLocation?: {
+      lat: number;
+      lon: number;
+      h3Index: string;
+    };
   };
   wishlist: string[];
   settings: {
@@ -116,6 +128,8 @@ export interface Order {
     walletAddress: string;
     _id?: string;
     address: Address; // La dirección del comprador puede no estar geocodificada aún.
+    email: string;
+    phone: string;
   };
   sellers: string[];
   shipments: string[];
@@ -139,7 +153,7 @@ export interface BaseShipment {
 
 export interface GoingNetworkShipment extends BaseShipment {
   shippingType: 'going_network';
-  status: 'pending' | 'ready_to_ship' | 'in_transit' | 'shipped' | 'delivered' | 'cancelled';
+  status: 'pending' | 'ready_to_ship' | 'batched' | 'in_transit' | 'out_for_delivery' | 'shipped' | 'delivered' | 'cancelled';
   deliveryDetails?: {
     driverId: string;
     trackingNumber?: string;
@@ -156,8 +170,8 @@ export interface SelfDeliveryShipment extends BaseShipment {
   };
 }
 
-export type Shipment = (GoingNetworkShipment | SelfDeliveryShipment) & { 
-  _id?: string; 
+export type Shipment = (GoingNetworkShipment | SelfDeliveryShipment) & {
+  _id?: string;
 };
 
 // --- Logística y Tareas de Conductor ---
@@ -208,11 +222,11 @@ export interface EncryptedData {
 }
 
 export interface DriverState {
-    socketId: string;
-    driverId: string;
-    lat: number;
-    lon: number;
-    status: DriverStatus;
-    idleSince: number;
-    quadrantId: string;
+  socketId: string;
+  driverId: string;
+  lat: number;
+  lon: number;
+  status: DriverStatus;
+  idleSince: number;
+  quadrantId: string;
 }

@@ -15,7 +15,7 @@ const PANEL_HEIGHT = SCREEN_HEIGHT * 0.40;
 // --- Helper to decode OSRM polyline
 function decodePolyline(encoded: string): [number, number][] {
     if (!encoded) return [];
-    let poly = [], index = 0, len = encoded.length, lat = 0, lng = 0;
+    let poly: [number, number][] = [], index = 0, len = encoded.length, lat = 0, lng = 0;
     while (index < len) {
         let b, shift = 0, result = 0;
         do {
@@ -44,14 +44,14 @@ const DeliveryStopCard = ({ shipment, onPress, stopNumber, isActive }: { shipmen
     const circleClasses = isActive ? "bg-green-500" : "bg-gray-600";
 
     return (
-        <TouchableOpacity onPress={onPress} disabled={!isActive} className={`p-4 rounded-2xl shadow-md border border-gray-700 mb-4 mx-4 ${cardClasses}`}>
+        <TouchableOpacity onPress={onPress} className={`p-4 rounded-2xl shadow-md border border-gray-700 mb-4 mx-4 ${cardClasses}`}>
             <View className="flex-row items-center">
                 <View className={`w-10 h-10 rounded-full items-center justify-center ${circleClasses}`}>
                     <Text className="text-lg font-bold text-white">{stopNumber}</Text>
                 </View>
                 <View className="flex-1 ml-4">
-                    <Text className="text-lg font-bold text-white" numberOfLines={1}>{shipment.deliveryAddress.name}</Text>
-                    <Text className="text-base text-gray-400" numberOfLines={1}>{shipment.deliveryAddress.street}</Text>
+                    <Text className="text-lg font-bold text-white" numberOfLines={1}>{shipment.deliveryAddress?.fullName || 'Unknown Recipient'}</Text>
+                    <Text className="text-base text-gray-400" numberOfLines={1}>{shipment.deliveryAddress?.street || 'Address Hidden'}</Text>
                 </View>
                 <ChevronRightIcon size={24} color={isActive ? "#9CA3AF" : "#4B5563"} />
             </View>
@@ -59,9 +59,12 @@ const DeliveryStopCard = ({ shipment, onPress, stopNumber, isActive }: { shipmen
     );
 };
 
+import { usePrivy } from '@privy-io/expo';
+
 export const DeliveringBatchView = () => {
     const router = useRouter();
     const { activeTask } = useDriverTask();
+    const { user } = usePrivy();
     const cameraRef = useRef<any>(null);
     const [routeShape, setRouteShape] = useState<GeoJSON.Feature<GeoJSON.LineString> | null>(null);
     const [pointFeatures, setPointFeatures] = useState<FeatureCollection<Point> | null>(null);
@@ -72,7 +75,7 @@ export const DeliveringBatchView = () => {
         if (activeTask?.batch?.shipments) {
             const activeIndex = activeTask.batch.shipments.findIndex(s => s.status === 'in_transit');
             const features: Feature<Point>[] = activeTask.batch.shipments
-                .filter(s => s.deliveryAddress.lon != null && s.deliveryAddress.lat != null)
+                .filter(s => s.deliveryAddress && s.deliveryAddress.lon != null && s.deliveryAddress.lat != null)
                 .map((s, index) => ({
                     type: 'Feature',
                     geometry: {
@@ -85,7 +88,7 @@ export const DeliveringBatchView = () => {
                         isActive: index === activeIndex,
                     },
                 }));
-            
+
             setPointFeatures({
                 type: 'FeatureCollection',
                 features: features,
@@ -119,27 +122,93 @@ export const DeliveringBatchView = () => {
     useEffect(() => {
         if (pointFeatures && pointFeatures.features.length > 0) {
             const coordinates = pointFeatures.features.map(f => f.geometry.coordinates);
-            
+
             const timer = setTimeout(() => {
-                cameraRef.current?.fitBounds?.(
-                    [Math.min(...coordinates.map(c => c[0])), Math.min(...coordinates.map(c => c[1]))],
-                    [Math.max(...coordinates.map(c => c[0])), Math.max(...coordinates.map(c => c[1]))],
-                    [120, 70, 20, 70],
-                    300
-                );
+                if (coordinates.length === 1) {
+                    cameraRef.current?.setCamera({
+                        centerCoordinate: coordinates[0],
+                        zoomLevel: 15,
+                        animationDuration: 300,
+                    });
+                } else {
+                    cameraRef.current?.fitBounds?.(
+                        [Math.min(...coordinates.map(c => c[0])), Math.min(...coordinates.map(c => c[1]))],
+                        [Math.max(...coordinates.map(c => c[0])), Math.max(...coordinates.map(c => c[1]))],
+                        [120, 70, 20, 70],
+                        300
+                    );
+                }
             }, 300);
 
             return () => clearTimeout(timer);
         }
     }, [pointFeatures, routeShape]);
 
-    const handleStartNavigation = () => { /* ... */ };
+    const handleStartNavigation = () => {
+        if (!activeTask || !activeTask.batch) return;
+
+        const activeIndex = activeTask.batch.shipments.findIndex(s => s.status === 'in_transit');
+        if (activeIndex === -1) {
+            Alert.alert("Navigation", "No active shipment found.");
+            return;
+        }
+
+        const targetShipment = activeTask.batch.shipments[activeIndex];
+        const { lat, lon } = targetShipment.deliveryAddress;
+        const label = targetShipment.deliveryAddress.fullName;
+
+        const openMap = (url: string) => {
+            Linking.openURL(url).catch(err => {
+                console.error('An error occurred', err);
+                Alert.alert("Error", "Could not open map application.");
+            });
+        };
+
+        if (Platform.OS === 'ios') {
+            Alert.alert(
+                "Start Navigation",
+                "Choose a map app:",
+                [
+                    {
+                        text: "Apple Maps",
+                        onPress: () => openMap(`maps:0,0?q=${lat},${lon}(${label})`)
+                    },
+                    {
+                        text: "Google Maps",
+                        onPress: () => openMap(`comgooglemaps://?q=${lat},${lon}&center=${lat},${lon}`)
+                    },
+                    {
+                        text: "Waze",
+                        onPress: () => openMap(`waze://?ll=${lat},${lon}&navigate=yes`)
+                    },
+                    { text: "Cancel", style: "cancel" }
+                ]
+            );
+        } else {
+            Alert.alert(
+                "Start Navigation",
+                "Choose a map app:",
+                [
+                    {
+                        text: "Google Maps",
+                        onPress: () => openMap(`google.navigation:q=${lat},${lon}`)
+                    },
+                    {
+                        text: "Waze",
+                        onPress: () => openMap(`waze://?ll=${lat},${lon}&navigate=yes`)
+                    },
+                    { text: "Cancel", style: "cancel" }
+                ]
+            );
+        }
+    };
 
     if (!activeTask || !activeTask.batch) {
         return <ActivityIndicator />;
     }
 
     const { batch } = activeTask;
+    console.log("[DeliveringBatchView] Current Shipment Statuses:", batch.shipments.map(s => s.status));
     const activeShipmentIndex = batch.shipments.findIndex(s => s.status === 'in_transit');
 
     const handleItemPress = (shipmentId: string) => {
@@ -152,7 +221,7 @@ export const DeliveringBatchView = () => {
         <View style={styles.container}>
             <MapView style={styles.map} mapStyle={`https://api.maptiler.com/maps/dataviz/style.json?key=${MAPTILER_API_KEY}`}>
                 <Camera ref={cameraRef} />
-                
+
                 {routeShape && (
                     <ShapeSource id="routeSource" shape={routeShape}>
                         <LineLayer
@@ -197,7 +266,7 @@ export const DeliveringBatchView = () => {
                     </ShapeSource>
                 )}
             </MapView>
-            
+
             <TouchableOpacity onPress={handleStartNavigation} style={styles.navigationButton}>
                 <MapPinIcon size={24} color="white" />
                 <Text style={styles.navigationButtonText}>Start Navigation</Text>
@@ -217,14 +286,10 @@ export const DeliveringBatchView = () => {
                     ))}
                 </ScrollView>
                 <View className="p-4 bg-transparent mb-4">
-                    <TouchableOpacity onPress={handleAllDelivered}>
-                        <LinearGradient colors={['#10B981', '#34D399']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} className="py-3 rounded-full shadow-lg">
-                            <Text className="text-white text-lg font-bold text-center">Finalizar Ruta</Text>
-                        </LinearGradient>
-                    </TouchableOpacity>
                 </View>
             </View>
         </View>
+        </View >
     );
 };
 

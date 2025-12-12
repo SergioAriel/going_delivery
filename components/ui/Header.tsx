@@ -8,19 +8,21 @@ interface HeaderProps {
     isOnline: boolean;
 }
 
+import { BlurView } from 'expo-blur';
+
 const Header = ({ isOnline }: HeaderProps) => {
     return (
-        <SafeAreaView style={{ backgroundColor: 'transparent' }}>
-            <View className="p-4">
+        <View className="overflow-hidden rounded-b-2xl">
+            <BlurView intensity={30} tint="dark" className="pb-4 pt-12 px-4">
                 <View className="flex-row justify-between items-center">
-                    <ThemedText type="title">Dashboard</ThemedText>
-                    <View className="flex-row items-center space-x-2">
-                        <View className={`w-3 h-3 rounded-full ${isOnline ? 'bg-green-400' : 'bg-gray-500'}`} />
-                        <ThemedText type="defaultSemiBold">{isOnline ? 'Online' : 'Offline'}</ThemedText>
+                    <ThemedText type="title" className="text-primary text-2xl tracking-wider">Dashboard</ThemedText>
+                    <View className="flex-row items-center space-x-2 bg-surface/50 px-3 py-1 rounded-full border border-white/10">
+                        <View className={`w-3 h-3 rounded-full shadow-sm ${isOnline ? 'bg-success shadow-success' : 'bg-text-muted'}`} />
+                        <ThemedText type="defaultSemiBold" className="text-text text-sm">{isOnline ? 'Online' : 'Offline'}</ThemedText>
                     </View>
                 </View>
-            </View>
-        </SafeAreaView>
+            </BlurView>
+        </View>
     );
 };
 

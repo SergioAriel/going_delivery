@@ -36,7 +36,8 @@ export default {
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_BACKGROUND_LOCATION"
-      ]
+      ],
+      "usesCleartextTraffic": true
     },
     "plugins": [
       [
@@ -81,7 +82,8 @@ export default {
       "eas": {
         "projectId": "735f9ad4-92e2-4014-bdeb-fe8c13a214a8"
       },
-      "MAPTILER_API_KEY": process.env.MAPTILER_API_KEY
+      "MAPTILER_API_KEY": process.env.MAPTILER_API_KEY,
+      "API_URL": process.env.API_URL || "http://192.168.0.196:4000"
     },
     "owner": "serariel"
   }
